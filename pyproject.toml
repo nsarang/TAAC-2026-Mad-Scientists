@@ -1,0 +1,187 @@
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+fix = true
+
+[tool.ruff.lint]
+unfixable = []
+
+select = [
+  # pyflakes
+  "F",
+  # pycodestyle
+  "E", "W",
+  # flake8-2020
+  "YTT",
+  # flake8-bugbear
+  "B",
+  # flake8-quotes
+  "Q",
+  # flake8-debugger
+  "T10",
+  # flake8-gettext
+  "INT",
+  # pylint
+  "PL",
+  # flake8-pytest-style
+  "PT",
+  # misc lints
+  "PIE",
+  # flake8-pyi
+  "PYI",
+  # tidy imports
+  "TID",
+  # implicit string concatenation
+  "ISC",
+  # comprehensions
+  "C4",
+  # pygrep-hooks
+  "PGH",
+  # Ruff-specific rules
+  "RUF",
+  # flake8-bandit: exec-builtin
+  "S102",
+  # Perflint
+  "PERF",
+  # flynt
+  "FLY",
+  # flake8-logging-format
+  "G",
+  # flake8-future-annotations
+  "FA",
+  # unconventional-import-alias
+  "ICN001",
+  # flake8-slots
+  "SLOT",
+  # flake8-raise
+  "RSE",
+  # pydocstyle
+  "D100", "D101", "D102", "D103", "D301", "D417",
+]
+
+ignore = [
+  # module level import not at top of file
+  "E402",
+  # do not assign a lambda expression, use a def
+  "E731",
+  # controversial
+  "B007",
+  "B008",
+  # tests use comparisons but not their returned value
+  "B015",
+  # Function definition does not bind loop variable
+  "B023",
+  # Only works with python >=3.10
+  "B905",
+  # Unnecessary `dict()` call (rewrite as a literal)
+  "C408",
+  # Logging statement uses f-string
+  "G004",
+  # Too many arguments to function call
+  "PLR0913",
+  # Too many returns
+  "PLR0911",
+  # Too many branches
+  "PLR0912",
+  # Too many statements
+  "PLR0915",
+  # Redefined loop name
+  "PLW2901",
+  # Global statements are discouraged
+  "PLW0603",
+  # while int | float can be shortened to float, the former is more explicit
+  "PYI041",
+  # incorrect-dict-iterator
+  "PERF102",
+  # try-except-in-loop
+  "PERF203",
+  # manual-list-comprehension — append-in-loop is often clearer than extend with a genexpr,
+  # especially when the loop body has conditions or side effects
+  "PERF401",
+  # pytest-parametrize-names-wrong-type
+  "PT006",
+  # pytest-parametrize-values-wrong-type
+  "PT007",
+  # pytest-patch-with-lambda
+  "PT008",
+  # pytest-raises-with-multiple-statements
+  "PT012",
+  # pytest-assert-in-except
+  "PT017",
+  # pytest-composite-assertion
+  "PT018",
+  # The following rules may cause conflicts when used with the formatter
+  "ISC001",
+  # Line too long
+  "E501",
+  # Magic number
+  "PLR2004",
+  # PEP 484 prohibits implicit `Optional`
+  "RUF013",
+  # import-outside-toplevel
+  "PLC0415",
+  # too-many-locals
+  "PLR0914",
+  # too-many-boolean-expressions
+  "PLR0916",
+  # too-many-positional-arguments
+  "PLR0917",
+  # too-many-nested-blocks
+  "PLR1702",
+  # unnecessary-lambda
+  "PLW0108",
+]
+
+exclude = [
+  ".eggs/*.py",
+  "*.ipynb",
+  "*.pyx",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"notebooks/**/*.py" = ["D100", "D101", "D102", "D103", "D301", "D417"]
+"tests/**/*.py" = ["D100", "D101", "D102", "D103"]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"unittest.mock".msg = "use pytest builtin monkeypatch fixture instead"
+"os.remove".msg = "Do not use os.remove"
+
+[tool.ruff.lint.flake8-pytest-style]
+fixture-parentheses = false
+mark-parentheses = false
+
+[tool.ruff.format]
+docstring-code-format = true
+docstring-code-line-length = 100
+
+[tool.pytest.ini_options]
+minversion = "7.3.2"
+testpaths = "tests"
+python_files = [
+    "test_*.py",
+    "*_test.py",
+]
+python_functions = [
+    "test_*",
+    "*_test",
+]
+addopts = "--strict-markers --strict-config --capture=no --durations=30 -m 'not nightly'"
+empty_parameter_set_mark = "fail_at_collect"
+xfail_strict = true
+filterwarnings = [
+  "error::ResourceWarning",
+  "error::pytest.PytestUnraisableExceptionWarning",
+  "ignore:More than 20 figures have been opened:RuntimeWarning",
+]
+junit_family = "xunit2"
+markers = [
+  "slow: integration tests that spawn training subprocesses or load real data",
+  "nightly: expensive tests excluded by default (run with -m nightly)",
+]
+
+[tool.codespell]
+ignore-words-list = ["FPR", "MoT", "mot"]
+
+[tool.isort]
+profile = "black"
+line_length = 100

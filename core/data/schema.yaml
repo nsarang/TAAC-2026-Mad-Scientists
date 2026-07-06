@@ -1,0 +1,169 @@
+# Reference copy of the competition schema.json (from the real dataset).
+# The actual schema.json lives inside the dataset directory on the platform.
+#
+# Tuple formats:
+#   user_int / item_int:  [fid, vocab_size, dim]
+#     fid         — feature ID (column name: {group}_feats_{fid})
+#     vocab_size  — number of distinct positive values
+#     dim         — 1 = scalar, >1 = list with that many slots
+#
+#   user_dense:           [fid, max_length]
+#     fid         — feature ID (column name: user_dense_feats_{fid})
+#     max_length  — max vector length across rows
+#
+#   seq.*.features:       [fid, vocab_size]
+#     fid         — feature ID (column name: {prefix}_{fid})
+#     vocab_size  — 0 for timestamp columns (continuous values)
+
+format: raw_parquet
+
+# --- Static user features: [fid, vocab_size, dim] ---
+user_int:
+  # scalars (dim=1)
+  - [1, 6, 1]        # gender-like (6 values)
+  - [3, 1916, 1]
+  - [4, 1018, 1]
+  - [48, 101, 1]
+  - [49, 3, 1]       # binary-ish
+  - [50, 4, 1]
+  - [51, 160, 1]
+  - [52, 193, 1]
+  - [53, 563, 1]
+  - [54, 2862, 1]
+  - [55, 44, 1]
+  - [56, 1456, 1]
+  - [57, 257, 1]
+  - [58, 3, 1]
+  - [59, 17, 1]
+  - [82, 24, 1]
+  - [86, 252, 1]
+  - [92, 3, 1]
+  - [93, 38, 1]
+  - [94, 7, 1]
+  - [95, 4, 1]
+  - [96, 4, 1]
+  - [97, 4, 1]
+  - [98, 4, 1]
+  - [99, 4, 1]
+  - [100, 4, 1]
+  - [101, 4, 1]
+  - [102, 4, 1]
+  - [103, 4, 1]
+  - [104, 4, 1]
+  - [105, 4, 1]
+  - [106, 4, 1]
+  - [107, 4, 1]
+  - [108, 8, 1]
+  - [109, 8, 1]
+  # multi-hot / list features (dim > 1)
+  - [15, 1173, 26]
+  - [60, 3, 2]
+  - [62, 11, 7]
+  - [63, 49, 20]
+  - [64, 51, 33]
+  - [65, 447, 116]
+  - [66, 1485, 201]
+  - [80, 13, 6]
+  # constant-length int arrays (all dim=10)
+  - [89, 10, 10]
+  - [90, 10, 10]
+  - [91, 10, 10]
+
+# --- Static item features: [fid, vocab_size, dim] ---
+item_int:
+  - [5, 309, 1]
+  - [6, 943, 1]
+  - [7, 2533, 1]
+  - [8, 2213, 1]
+  - [9, 42, 1]
+  - [10, 318, 1]
+  - [11, 23832, 20]  # list feature
+  - [12, 2533, 1]
+  - [13, 9, 1]
+  - [16, 25495, 1]
+  - [81, 3, 1]
+  - [83, 32, 1]
+  - [84, 234, 1]
+  - [85, 1084, 1]
+
+# --- Dense (float vector) user features: [fid, max_length] ---
+user_dense:
+  - [61, 256]   # fixed-dim embedding
+  - [62, 7]     # frequency counts (sorted desc)
+  - [63, 20]    # frequency counts
+  - [64, 33]    # frequency counts
+  - [65, 116]   # frequency counts
+  - [66, 201]   # frequency counts
+  - [87, 320]   # fixed-dim embedding
+  - [89, 10]    # fixed-dim embedding
+  - [90, 10]    # fixed-dim embedding
+  - [91, 10]    # fixed-dim embedding
+
+# --- Behavioral sequence domains ---
+# Each domain has a column prefix, a timestamp feature (ts_fid),
+# and a list of [fid, vocab_size] pairs.
+seq:
+  seq_a:
+    prefix: domain_a_seq
+    ts_fid: 39
+    features:
+      - [38, 889551]   # entity ID (item-like)
+      - [39, 0]        # timestamp
+      - [40, 19]       # event type
+      - [41, 12]       # low-card attribute
+      - [42, 1028]     # category
+      - [43, 3498]     # category
+      - [44, 13692]    # high-card category
+      - [45, 8175]     # high-card category
+      - [46, 18]       # low-card attribute
+
+  seq_b:
+    prefix: domain_b_seq
+    ts_fid: 67
+    features:
+      - [67, 0]        # timestamp
+      - [68, 28]       # event type
+      - [69, 85946394] # entity ID (huge vocab)
+      - [70, 740]      # category
+      - [71, 2729]     # category
+      - [72, 10572]    # category
+      - [73, 6985]     # category
+      - [74, 531477]   # high-card ID
+      - [75, 31]       # low-card attribute
+      - [76, 143746]   # price / numeric ID
+      - [77, 168]      # category
+      - [78, 4340]     # category
+      - [79, 11623]    # category
+      - [88, 249080]   # high-card ID
+
+  seq_c:
+    prefix: domain_c_seq
+    ts_fid: 27
+    features:
+      - [27, 0]         # timestamp
+      - [28, 75]        # event type
+      - [29, 6551861]   # entity ID
+      - [30, 864]       # category
+      - [31, 6896]      # category
+      - [32, 7]         # event type (low-card)
+      - [33, 5]         # event type (low-card)
+      - [34, 1292419]   # high-card ID
+      - [35, 2998]      # category
+      - [36, 1134859]   # high-card ID
+      - [37, 9697]      # category
+      - [47, 125610776] # creative ID (huge vocab)
+
+  seq_d:
+    prefix: domain_d_seq
+    ts_fid: 26
+    features:
+      - [17, 5]       # event type
+      - [18, 980]     # category
+      - [19, 3469]    # category
+      - [20, 11510]   # category
+      - [21, 5156]    # category
+      - [22, 443147]  # entity ID
+      - [23, 630399]  # entity ID
+      - [24, 626]     # category
+      - [25, 15]      # watch stage
+      - [26, 0]       # timestamp

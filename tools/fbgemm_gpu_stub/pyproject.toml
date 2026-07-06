@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fbgemm-gpu"
+version = "0.0.1"
+description = "CPU/MPS stub for fbgemm_gpu — pure PyTorch fallbacks for torch.ops.fbgemm ops"
+requires-python = ">=3.10"
+dependencies = ["torch"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["fbgemm_gpu*"]

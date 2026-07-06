@@ -1,0 +1,3 @@
+-r app.txt
+torchrec==1.2.0
+fbgemm-gpu==1.2.0
