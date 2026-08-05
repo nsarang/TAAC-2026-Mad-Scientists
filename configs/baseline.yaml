@@ -1,0 +1,492 @@
+experiment_name: iacc-flagship
+model_name: dragon_chariot
+
+infer:
+  engine: core.training.engines.dragon_chariot.engine.setup_and_infer
+  use_trained_precision: false
+
+train:
+  engine: core.training.engines.dragon_chariot.engine.setup_and_train
+
+  seed: 42
+  max_epochs: 10
+
+  device: null
+  grad_clip: 1.0
+  amp_dtype: bfloat16
+  enable_torch_compile: true
+  output_dir: runs/${first:${experiment_name},${model_name}}/${now:}
+  sqlite_store: true
+  progress_bar: false
+  data_parallel: false
+  ddp: true
+  mid_epoch_evals: 0
+
+  lr_schedule:
+    type: constant_cooldown
+    warmup_steps: 0
+    cooldown_fraction: 0.2
+    min_lr_ratio: 0.01
+
+  dense_optimizer:
+    _cls: torch.optim.AdamW
+    _defer: true
+    _init:
+      lr: 1.0e-4
+      betas: [0.9, 0.98]
+      weight_decay: 0.01
+
+  sparse_optimizer:
+    _cls: torch.optim.Adagrad
+    _defer: true
+    _init:
+      lr: 0.05
+      weight_decay: 0.0
+
+  dense_param_overrides: {}
+  exclude_wd_on_bias_norm: false
+
+  loss:
+    _cls: torch.nn.BCEWithLogitsLoss
+    _init: {}
+
+  ema:
+    mode: ema
+    decay: 0.998
+    window_fraction: null
+    start_epoch: null
+    collect_every: null
+    collect_every_epoch: null
+
+  early_stopping: null
+
+  checkpoint:
+    dir: ${train.output_dir}/checkpoints
+    name: "global_step{step}.${experiment_name}.lr=${train.dense_optimizer._init.lr}.hidden=${model.d_model}"
+
+  pretrain_phase:
+    steps: 1000
+    epochs: null # always runs
+
+  reinit:
+    after_epoch: 1
+    cardinality_threshold: 1
+    snapshot_vocab_threshold: 100
+
+  compass: null
+
+  feature_masking: null
+  topo_lr: null  # applied to dense optimizer groups only
+  # topo_lr:
+  #   base: 0.85
+  #   min_scale: 0.2
+  #   mode: average
+  #   schedule:
+  #     enabled: true
+  #     shape: linear  # linear | cosine
+  #     ramp_end_frac: 0.75
+  #     reset_each_epoch: true
+
+model:
+  data_format: ${data.collator_type}
+  d_model: 80
+  emb_dim: 64
+  hash_cardinality_threshold: 1000000
+  hash_buckets: 0
+  learned_missingness: true
+  user_cat_ns_bypass: true
+  user_ns_tokens: 4
+  item_ns_tokens: 2
+  logit_weight: 0.0
+  output_bias_init: -2.172863
+  dropout_rate: 0.01
+
+  item_dense_cfg:
+    groups:
+      emb:
+        expr: >-
+          name in ('item_cont_f124', 'item_cont_f127', 'item_cont_f128', 'item_cont_f129_emb')
+          and scope = 'static' and source != 'metadata'
+      count:
+        expr: >-
+          name = 'item_cont_f129_count'
+          and scope = 'static' and source != 'metadata'
+    routing:
+      dropout: 0.01
+      all_sources: [sparse, emb, count]
+      embsem_query_sources: [emb]
+
+  din_cfg:
+    type: standard
+    query_sources: [sparse, emb]
+    logit_softcap: 15.0
+    hidden_mult: 2
+    dropout: 0.01
+    logit_head_activation: silu
+    logit_head_tanh_scale: null
+    time_bias: true
+    num_time_buckets: 64
+    windowed:
+      fusion: residual
+      residual_scale_init: 0.0
+      residual_cap: 0.2
+      memory_scale_init: 0.0
+      memory_cap: 0.2
+      dropout: 0.01
+      domain_edges_sec:  # [recent|mid boundary, mid|old boundary]
+        seq_a: [2592000, 15552000]   # 30d, 180d
+        seq_b: [2592000, 15552000]   # 30d, 180d
+        seq_c: [6048000, 15552000]   # 70d, 180d
+        seq_d: [604800, 2592000]     # 7d, 30d
+
+  head_mode:
+    context_fusion: concat_proj
+    base: false
+    fusion: false
+    item_only: false
+    group_heads: []
+    logit_head_activation: silu
+    logit_head_tanh_scale: null
+    semantic_sources:
+      seq_item:
+        type: model_tensor
+        tensor: seq_repr
+      user_prior:
+        type: model_tensor
+        tensor: user_cat_ns
+      base_user_item:
+        type: model_tensor
+        tensor: base_repr
+      profile_item_cross:
+        type: profile_item_cross
+        features: >-
+          name in ('user_cont_f61', 'user_cont_f87', 'user_cont_f120')
+          and scope = 'static' and source != 'metadata'
+        remove_from_dense_ns: true
+        include_profile_vec: false
+        include_item_vec: true
+        use_product: true
+        use_abs_diff: true
+        hidden_mult: 2
+        scale_init: 0.1
+      attention_features:
+        type: feature_projector
+        per_feature: false
+        exprs:
+          - "name = 'dense_seq_stats' and source != 'metadata'"
+          - "name = 'c_target_hist' and source != 'metadata'"
+      creative_item:
+        type: item_router_bank
+        sources: [sparse, emb, count]
+      convenience_features:
+        type: feature_projector
+        per_feature: false
+        exprs:
+          - "name matches 'conv_state_*' and source != 'metadata'"
+    semantic_routes:
+      interest:
+        sources: [seq_item, user_prior, base_user_item, profile_item_cross]
+      attention:
+        sources: [attention_features]
+      creative:
+        sources: [creative_item]
+      convenience:
+        sources: [convenience_features]
+      fusion: true
+      bilinear_fusion: false
+      source_bilinear_fusion: false
+    flat_gdsl: null
+
+  seq_local_writer: null
+
+  decorrelation:
+    weight: 0.0
+    exclude_model_tensors: true
+
+  moe:
+    context_fusion: null
+    route_heads: null
+
+  pretext:
+    weight: 0.1
+    dropout: 0.1
+    hidden_mult: 2
+    query_type: learned
+    share_din: false
+    din_mode: per_domain
+    shared_num_head: true
+    cat_targets: >-
+      name in (
+        -- Low-cardinality user demographics (vocab <= 50, dim == 1)
+        'user_cat_f1',   -- gender-like (5 vals)
+        'user_cat_f49',  -- binary-ish (3 vals)
+        'user_cat_f50',  -- low-card (2 vals)
+        'user_cat_f59',  -- low-card (15 vals)
+        'user_cat_f82',  -- low-card (24 vals)
+        'user_cat_f92',  -- binary (3 vals)
+        'user_cat_f93',  -- binary (3 vals)
+        'user_cat_f94',  -- low-card (7 vals)
+        -- Low-cardinality item features
+        'item_cat_f5',   -- item attribute (20 vals)
+        'item_cat_f9',   -- item attribute (38 vals)
+        'item_cat_f10',  -- item attribute (4 vals)
+        'item_cat_f13'   -- item attribute (9 vals)
+      ) and scope = 'static' and source != 'metadata'
+    num_targets: >-
+      entity = 'user' and dtype = 'numerical'
+      and scope = 'static' and source = 'original'
+    per_domain_cat_targets:
+      seq_a: >-
+        name in ('user_cat_f1', 'user_cat_f49', 'user_cat_f50', 'user_cat_f59')
+        and scope = 'static' and source != 'metadata'
+      seq_b: >-
+        name in ('user_cat_f82', 'user_cat_f92', 'user_cat_f93', 'user_cat_f94')
+        and scope = 'static' and source != 'metadata'
+      seq_c: >-
+        name in ('item_cat_f5', 'item_cat_f9', 'item_cat_f10', 'item_cat_f13')
+        and scope = 'static' and source != 'metadata'
+
+data:
+  dataset_path: data/sample_r2
+  schema_path: data/sample_r2/schema.json
+
+  batch_size: 1024
+  val_batch_size: 2048
+  valid_ratio: 0.1
+  train_ratio: 0.1
+  split_mode: time
+
+  num_workers: 16
+  val_num_workers: 16
+
+  collator_type: padded
+  split_f129: true
+
+  streaming_train: true
+  shuffle_buffer_size: 40000
+  streaming_val: true
+
+  seed: ${train.seed}
+  prefetch_device: null
+  is_training: true
+  shuffle_train: true
+  pin_memory: true
+  clip_vocab: true
+
+  blocks:
+    rssc:
+      clip_value: 3.0
+      pre_transform: log1p
+      pattern: >-
+        name in (
+          'user_cont_f62', 'user_cont_f63', 'user_cont_f64',
+          'user_cont_f65', 'user_cont_f66',
+          'user_cont_f118', 'user_cont_f121',
+          'item_cont_f129_count'
+        )
+        and scope = 'static'
+        and source != 'metadata'
+    l2_norm:
+      pattern: >-
+        name in ('item_cont_f124', 'item_cont_f127', 'item_cont_f128', 'item_cont_f129_emb')
+        and scope = 'static'
+        and source != 'metadata'
+    time_bucket: {}
+    dense_seq_stats:
+      add_seq_len_bucket_norm: true
+      add_last_gap_log: true
+      add_gap_missing: true
+      add_recent_flags: true
+      recent_thresholds_sec: [300, 3600, 86400]
+      max_seq_len_norm: 4000
+      max_gap_sec: 31536000
+      empty_gap_value: 1.0
+      len_bucket_edges: [1, 10, 50, 100, 200, 500, 1000]
+    # V1 bug: emit_target_ids registers synthetic categoricals in user_int but
+    # the NS tokenizer never consumes them. Disabled here to match V1 behavior.
+    c_target:
+      add_exact: true
+      add_same_campaign: true
+      add_same_advertiser: false
+      emit_target_ids: false
+      recent_thresholds_sec: [3600, 86400, 604800]
+      max_seq_len_norm: 4000
+      max_gap_sec: 31536000
+      gap_missing_value: 1.0
+      max_action_id: 32
+      max_mapping_rows: 3000000
+      max_mapping_entries: 2000000
+    conversion_state:
+      recent_thresholds_sec: [3600, 86400, 604800]
+      max_seq_len_norm: 4000
+    time_cats: {}
+    seq_hour: null
+    seq_weekday: null
+    seq_truncate:
+      max_seq_lens:
+        seq_a: 256
+        seq_b: 256
+        seq_c: 512
+        seq_d: 512
+    assembly:
+      drop: []
+
+
+diagnostics:
+  tensorboard: true
+  log_dir: ${train.output_dir}/tb
+  warmup_steps: 100
+  n_logs_per_epoch: 25
+  active_codes:
+    - env
+    - model
+    - dataset
+    - timing
+    - dense_stats
+    - seq_lens
+    - label_dist
+    - throughput
+    - lr
+    - metrics
+    - grad_norm
+    - pred_conf
+    # - emb_util
+    - reinit
+    - oob
+    - opt_state
+    - done
+    - layer_health
+    # - attn
+    # - gate_stats
+    - grad_flow
+    - domain_geom
+    - logit_dist
+    - loss_conc
+    - eff_rank
+    - din_attn
+  code_config:
+    metrics:
+      train_auc_sample_size: 1_000_000
+    timing:
+      warmup_steps: 20
+    dense_stats:
+      warmup_steps: 200
+      filters:
+        user: "entity = 'user' and dtype = 'numerical' and scope = 'static' and source = 'original'"
+        item: "entity = 'item' and dtype = 'numerical' and scope = 'static' and source = 'original'"
+    seq_lens:
+      warmup_steps: 100
+    label_dist:
+      warmup_steps: 100
+    grad_norm:
+      warmup_steps: 100
+      param_groups:
+        # Only actual nn.Embedding weights (static + seq tables + time).
+        # Old "emb" pattern mis-caught user_emb_bypass_proj + seq_embedders.*.proj.
+        - {name: embeddings, pattern: "embedder.*\\.tables|time_embedding"}
+        - {name: din, pattern: "din_heads"}
+        - {name: dense_proj, pattern: "dense_proj"}
+        # Top-level context fusion (concat_proj mode). Anchored to avoid
+        # matching din_heads.*.context_proj which belongs in "din".
+        - {name: context_fusion, pattern: "^context_proj"}
+        - {name: head, pattern: "seq_head|base_head|group_heads|fusion_head"}
+        - {name: profile_cross, pattern: "profile_cross"}
+        - {name: pretext, pattern: "pretext_head"}
+        # NS tokenizer projections (user/item chunked Linear+LN → d_model tokens)
+        - {name: ns_proj, pattern: "ns_proj"}
+        # Per-domain sequence embedding projections (Linear+LN+GELU → d_model)
+        - {name: seq_proj, pattern: "seq_embedders.*\\.proj"}
+        # User embedding bypass (skip connection re-injecting user signal post-DIN)
+        - {name: bypass, pattern: "user_emb_bypass_proj"}
+    opt_state:
+      param_groups:
+        - {name: embeddings, pattern: "embedder.*\\.tables|time_embedding"}
+        - {name: din, pattern: "din_heads"}
+        - {name: dense_proj, pattern: "dense_proj"}
+        - {name: context_fusion, pattern: "^context_proj"}
+        - {name: head, pattern: "seq_head|base_head|group_heads|fusion_head"}
+        - {name: profile_cross, pattern: "profile_cross"}
+        - {name: pretext, pattern: "pretext_head"}
+        - {name: ns_proj, pattern: "ns_proj"}
+        - {name: seq_proj, pattern: "seq_embedders.*\\.proj"}
+        - {name: bypass, pattern: "user_emb_bypass_proj"}
+    emb_util:
+      hit_percentiles: [10, 25, 50, 75, 90, 95, 99]
+      accumulate_freq: 0.05
+    layer_health:
+      activation_stats: true
+      block_influence: true
+      accumulate_freq: 0.02
+      targets:
+        # Per-domain DIN context projection [B, D] — the fused target+context repr
+        - "^din_heads\\.seq_[a-d]\\.context_proj$"
+        # Top-level context fusion (all domain contexts → single repr)
+        - "^context_proj$"
+        - "^dense_proj$"
+        - "seq_head$"
+        - "base_head$"
+        - "^group_heads\\.linear_heads\\.\\w+$"
+        - "fusion_head$"
+        - "profile_cross$"
+        # Pretext fusion layer (only fires during training)
+        - "^pretext_head\\.domain_proj$"
+    domain_geom:
+      accumulate_freq: 0.02
+      targets:
+        # Per-domain seq projections [B, L, D] — pairwise cosine shows whether
+        # domains learn distinct vs collapsed representations.
+        # Configs that enable seq_local_writer should override to hook the
+        # post-writer representations instead (seq_local_writer.convs.seq_[a-c]).
+        - "^seq_embedders\\.seq_[a-d]\\.proj$"
+    grad_flow:
+      targets:
+        # Top-level DINHead boundary — gradient pressure reaching attention
+        - "^din_heads\\.seq_[a-d]$"
+        - "^context_proj$"
+        - "^dense_proj$"
+        - "seq_head$"
+        - "base_head$"
+        - "^group_heads\\.linear_heads\\.\\w+$"
+        - "fusion_head$"
+        - "profile_cross$"
+    logit_dist:
+      percentiles: [5, 25, 50, 75, 95]
+    loss_conc:
+      profile_hard: true
+      rank_profile: true
+      slice_profile: true
+      temporal_profile: true
+      max_pos_eval: 50000
+      max_neg_eval: 50000
+      max_pair_eval: 200000
+      margin_eps: 0.05
+      margin_percentiles: [1, 5, 10, 25, 50, 75, 90]
+      near_zero_eps_values: [0.01, 0.03, 0.05, 0.10, 0.20]
+      hub_top_fracs: [0.001, 0.005, 0.01, 0.05, 0.10]
+      slice_top_k: 5
+      rng_seed: 42
+    eff_rank:
+      accumulate_freq: 0.2
+      max_samples: 2048
+      targets:
+        # Only modules producing [B, D] representations (rank of [B,1] is trivially 1)
+        - "^din_heads\\.seq_[a-d]\\.context_proj$"
+        - "^context_proj$"
+        - "^dense_proj$"
+        - "^group_heads\\.projs\\.\\w+$"
+        - "^user_ns_proj$"
+    din_attn:
+      accumulate_freq: 0.2
+      targets:
+        - "^din_heads\\.seq_[a-d]$"
+      # Bucket indices: 1-20 ≤9 min, 21-40 9 min–5.5 hr, 41-63 5.5 hr–180 days
+      time_windows:
+        recent: [1, 20]
+        mid: [21, 40]
+        tail: [41, 63]
+    # attn: replaced by din_attn above (uses _last_diag stash instead of capture_weights protocol)
+    # gate_stats: PP has no gating modules (no sigmoid/softmax gates to track).
+    # Re-enable if gating is added (e.g. MoE router, feature gates).
+    # gate_stats:
+    #   targets:
+    #     - "some_gate_module"

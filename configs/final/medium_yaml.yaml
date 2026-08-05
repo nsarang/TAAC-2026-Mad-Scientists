@@ -1,0 +1,29 @@
+__inherits__:
+  - ./full_model.yaml
+
+experiment_name: final-128-64
+
+train:
+  max_epochs: 10
+
+data:
+  train_ratio: 0.1
+  valid_ratio: 0.1
+
+model:
+  emb_dim: 64
+
+  din_cfg:
+    hidden_mult: 2
+
+  pretext:
+    hidden_mult: 2
+
+  head_mode:
+    semantic_sources:
+      profile_item_cross:
+        hidden_mult: 2
+      profile_p0_f130_f124:
+        hidden_mult: 2
+      profile_p1_pos_group:
+        hidden_mult: 2
