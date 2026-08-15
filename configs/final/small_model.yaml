@@ -1,0 +1,70 @@
+__inherits__:
+  - ./full_model.yaml
+
+experiment_name: final-80-64
+
+train:
+  max_epochs: 10
+
+data:
+  train_ratio: 0.1
+  valid_ratio: 0.1
+
+model:
+  d_model: 80
+  emb_dim: 64
+
+  din_cfg:
+    hidden_mult: 2
+
+  pretext:
+    hidden_mult: 2
+
+  head_mode:
+    semantic_sources:
+      profile_item_cross:
+        hidden_mult: 2
+      profile_p0_f130_f124:
+        hidden_mult: 2
+        align_dim: ${model.d_model}
+      profile_p1_pos_group:
+        hidden_mult: 2
+        align_dim: ${model.d_model}
+
+diagnostics:
+  active_codes:
+    - env
+    - model
+    - dataset
+    - schema
+    - timing
+    - throughput
+    - lr
+    - loss_conc
+    - metrics
+    - done
+    - dense_stats
+    - seq_lens
+    - label_dist
+    - oob
+    - grad_norm
+    - opt_state
+    - reinit
+    - layer_health
+    - grad_flow
+    - domain_geom
+    - logit_dist
+    - eff_rank
+    - pred_conf
+    - writer_stats
+    - emb_util
+    - din_attn
+  code_config:
+    din_attn:
+      accumulate_freq: 0.2
+      targets:
+        - "^din_heads\\.seq_[a-d]$"
+      time_windows:
+        recent: [1, 15]
+        mid: [16, 35]
+        tail: [36, 63]

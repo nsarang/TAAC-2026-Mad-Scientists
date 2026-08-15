@@ -1,0 +1,193 @@
+__inherits__:
+  - ../baseline.yaml
+
+experiment_name: final-128-80
+
+diagnostics:
+  active_codes:
+    - env
+    - model
+    - dataset
+    - schema
+    - timing
+    - throughput
+    - lr
+    - loss_conc
+    - metrics
+    - done
+    - dense_stats
+    - seq_lens
+    - label_dist
+    - oob
+    - grad_norm
+    - opt_state
+    - reinit
+    - layer_health
+    - grad_flow
+    - domain_geom
+    - logit_dist
+    - eff_rank
+    - pred_conf
+    - writer_stats
+    # - emb_util
+  code_config:
+    domain_geom:
+      targets:
+        # seq_local_writer is enabled in this config family — hook post-writer
+        # representations (what DIN actually attends over) for seq_a/b/c.
+        # seq_d has no writer; measured at the embedder projection.
+        - "^seq_local_writer\\.convs\\.seq_[a-c]$"
+        - "^seq_embedders\\.seq_d\\.proj$"
+
+train:
+  max_epochs: 15
+  lr_schedule: null
+
+data:
+  num_workers: 8
+  val_num_workers: 8
+  train_ratio: 0.25
+  valid_ratio: 0.1
+  split_f129: false
+  val_cache:
+    enabled: true
+    dir: ${train.output_dir}/val_cache
+    shard_rows: 4096
+    max_pending_shards: 32
+    row_group_size: 700
+    compression: zstd
+    keep_last: 1
+  blocks:
+    rssc:
+      pattern: >-
+        name in (
+          'user_cont_f62', 'user_cont_f63', 'user_cont_f64',
+          'user_cont_f65', 'user_cont_f66'
+        )
+        and scope = 'static'
+        and source != 'metadata'
+    l2_norm: null
+
+model:
+  d_model: 128
+  emb_dim: 80
+
+  item_dense_cfg:
+    groups:
+      emb:
+        expr: >-
+          name in ('item_cont_f124', 'item_cont_f127', 'item_cont_f128')
+          and scope = 'static' and source != 'metadata'
+      count:
+        expr: >-
+          name = 'item_cont_f129'
+          and scope = 'static' and source != 'metadata'
+
+  din_cfg:
+    hidden_mult: 4
+
+  pretext:
+    hidden_mult: 4
+
+  head_mode:
+    semantic_sources:
+      profile_item_cross:
+        type: profile_item_cross
+        features: >-
+          name in ('user_cont_f61', 'user_cont_f120')
+          and scope = 'static' and source != 'metadata'
+        remove_from_dense_ns: false
+        include_profile_vec: false
+        include_item_vec: true
+        use_product: true
+        use_abs_diff: true
+        hidden_mult: 4
+        scale_init: 0.1
+      profile_p0_f130_f124:
+        type: profile_extra_cross
+        features: >-
+          name = 'user_cont_f130'
+          and scope = 'static' and source != 'metadata'
+        slices:
+          user_cont_f130:
+            - 0
+            - 259
+        remove_from_dense_ns: false
+        item_source: feature
+        item_features: >-
+          name = 'item_cont_f124'
+          and scope = 'static' and source != 'metadata'
+        use_norm_side: false
+        norm_scale: 6.0
+        hidden_mult: 4
+        align_dim: ${model.d_model}
+        gate_bias_init: -3.0
+        scale_init: 0.01
+        logit_residual: false
+      profile_p1_pos_group:
+        type: profile_extra_cross
+        features: >-
+          name in ('user_cont_f120', 'user_cont_f123', 'user_cont_f131')
+          and scope = 'static' and source != 'metadata'
+        slices:
+          user_cont_f131:
+            - 0
+            - 256
+        remove_from_dense_ns: false
+        item_source: feature
+        item_features: >-
+          name in ('item_cont_f124', 'item_cont_f127', 'item_cont_f128', 'item_cont_f129')
+          and scope = 'static' and source != 'metadata'
+        item_slices:
+          item_cont_f129:
+            - 0
+            - 128
+        use_norm_side: false
+        norm_scale: 6.0
+        hidden_mult: 4
+        align_dim: ${model.d_model}
+        gate_bias_init: -3.0
+        scale_init: 0.01
+        logit_residual: false
+      learned_cross:
+        type: gdcn
+        n_layers: 3
+        rank: 64
+        dropout: 0.01
+    semantic_routes:
+      interest:
+        sources:
+          - seq_item
+          - user_prior
+          - base_user_item
+          - profile_item_cross
+          - profile_p0_f130_f124
+          - profile_p1_pos_group
+      attention:
+        sources:
+          - attention_features
+      creative:
+        sources:
+          - creative_item
+      convenience:
+        sources:
+          - convenience_features
+      fusion: true
+      bilinear_fusion: true
+      source_bilinear_fusion: false
+      interaction:
+        sources:
+          - learned_cross
+
+  seq_local_writer:
+    mode: content
+    kernel_size: 5
+    content_gate_mode: hard
+    alpha_init: 1.0
+    beta_init: 0.1
+    gamma_init: 0.0
+    gate_bias_init: 1.0
+    enabled_domains:
+      - seq_a
+      - seq_b
+      - seq_c
